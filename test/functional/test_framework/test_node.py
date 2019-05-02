@@ -218,6 +218,10 @@ class TestNode():
         self.running = True
         self.log.debug("bitcoind started, waiting for RPC to come up")
 
+        print("NODE STARTED, pid: " + str(self.process.pid))
+        input("attach debugger, then press return")
+        print("continuing")
+
         if self.start_perf:
             self._start_perf()
 
@@ -226,9 +230,11 @@ class TestNode():
         # Poll at a rate of four times per second
         poll_per_s = 4
         for _ in range(poll_per_s * self.rpc_timeout):
-            if self.process.poll() is not None:
+            x = self.process.poll()
+            if x is not None:
+                print("X: " + str(x))
                 raise FailedToStartError(self._node_msg(
-                    'bitcoind exited with status {} during initialization'.format(self.process.returncode)))
+                    'bitcoind exited with status {} ({}) during initialization'.format(self.process.returncode, x)))
             try:
                 rpc = get_rpc_proxy(rpc_url(self.datadir, self.index, self.chain, self.rpchost), self.index, timeout=self.rpc_timeout, coveragedir=self.coverage_dir)
                 rpc.getblockcount()
