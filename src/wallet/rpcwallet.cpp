@@ -3262,7 +3262,7 @@ void FundTransaction(CWallet* const pwallet, CMutableTransaction& tx, CAmount& f
                 std::map<std::string, UniValue> kvMap;
                 options["changeAddress"].getObjMap(kvMap);
 
-                for (const std::pair<std::string, UniValue>& kv : kvMap) {
+                for (const auto& kv : kvMap) {
                     CAsset asset = GetAssetFromString(kv.first);
                     if (asset.IsNull()) {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "changeAddress key must be a valid asset label or hex");
