@@ -218,10 +218,6 @@ class TestNode():
         self.running = True
         self.log.debug("bitcoind started, waiting for RPC to come up")
 
-        print("NODE STARTED, pid: " + str(self.process.pid))
-        input("attach debugger, then press return")
-        print("continuing")
-
         if self.start_perf:
             self._start_perf()
 

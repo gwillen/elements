@@ -12,8 +12,6 @@ from test_framework.util import assert_equal, assert_raises_rpc_error, connect_n
 import json
 import os
 
-import time  # XXX
-
 MAX_BIP125_RBF_SEQUENCE = 0xfffffffd
 
 # Create one-input, one-output, no-fee transaction:
@@ -91,16 +89,14 @@ class PSBTTest(BitcoinTestFramework):
         # Create and fund a raw tx for sending 10 BTC
         psbtx1 = self.nodes[0].walletcreatefundedpsbt([], {self.get_address(confidential, 2):10})['psbt']
 
-        print("NOW")
-        #time.sleep(30)
-        print("TOO LATE")
-
         # Node 1 should not be able to add anything to it but still return the psbtx same as before
-        psbtx = self.nodes[1].walletprocesspsbt(psbtx1)['psbt']
+        psbtx = self.nodes[1].walletfillpsbtdata(psbtx1)['psbt']
         assert_equal(psbtx1, psbtx)
 
         # Sign the transaction and send
-        signed_tx = self.nodes[0].walletprocesspsbt(psbtx)['psbt']
+        filled_tx = self.nodes[0].walletfillpsbtdata(psbtx)['psbt']
+        blinded_tx = self.nodes[0].blindpsbt(filled_tx)
+        signed_tx = self.nodes[0].walletsignpsbt(blinded_tx)['psbt']
         final_tx = self.nodes[0].finalizepsbt(signed_tx)['hex']
         self.nodes[0].sendrawtransaction(final_tx)
 
@@ -155,20 +151,26 @@ class PSBTTest(BitcoinTestFramework):
 
         # spend single key from node 1
         rawtx = self.nodes[1].walletcreatefundedpsbt([{"txid":txid,"vout":p2wpkh_pos},{"txid":txid,"vout":p2sh_p2wpkh_pos},{"txid":txid,"vout":p2pkh_pos}], {self.get_address(confidential, 1):29.99})['psbt']
-        walletprocesspsbt_out = self.nodes[1].walletprocesspsbt(rawtx)
-        assert_equal(walletprocesspsbt_out['complete'], True)
-        self.nodes[1].sendrawtransaction(self.nodes[1].finalizepsbt(walletprocesspsbt_out['psbt'])['hex'])
+        filled = self.nodes[1].walletfillpsbtdata(rawtx)['psbt']
+        blinded = self.nodes[1].blindpsbt(filled)
+        walletsignpsbt_out = self.nodes[1].walletsignpsbt(blinded)
+        assert_equal(walletsignpsbt_out['complete'], True)
+        self.nodes[1].sendrawtransaction(self.nodes[1].finalizepsbt(walletsignpsbt_out['psbt'])['hex'])
 
         # partially sign multisig things with node 1
         psbtx = self.nodes[1].walletcreatefundedpsbt([{"txid":txid,"vout":p2wsh_pos},{"txid":txid,"vout":p2sh_pos},{"txid":txid,"vout":p2sh_p2wsh_pos}], {self.get_address(confidential, 1):29.99})['psbt']
-        walletprocesspsbt_out = self.nodes[1].walletprocesspsbt(psbtx)
-        psbtx = walletprocesspsbt_out['psbt']
-        assert_equal(walletprocesspsbt_out['complete'], False)
+        filled = self.nodes[1].walletfillpsbtdata(psbtx)['psbt']
+        # have both nodes fill before we try to blind and sign
+        filled = self.nodes[2].walletfillpsbtdata(filled)['psbt']
+        blinded = self.nodes[1].blindpsbt(filled)
+        walletsignpsbt_out = self.nodes[1].walletsignpsbt(blinded)
+        psbtx = walletsignpsbt_out['psbt']
+        assert_equal(walletsignpsbt_out['complete'], False)
 
         # partially sign with node 2. This should be complete and sendable
-        walletprocesspsbt_out = self.nodes[2].walletprocesspsbt(psbtx)
-        assert_equal(walletprocesspsbt_out['complete'], True)
-        self.nodes[2].sendrawtransaction(self.nodes[2].finalizepsbt(walletprocesspsbt_out['psbt'])['hex'])
+        walletsignpsbt_out = self.nodes[2].walletsignpsbt(psbtx)
+        assert_equal(walletsignpsbt_out['complete'], True)
+        self.nodes[2].sendrawtransaction(self.nodes[2].finalizepsbt(walletsignpsbt_out['psbt'])['hex'])
 
         # check that walletprocesspsbt fails to decode a non-psbt
         rawtx = self.nodes[1].createrawtransaction([{"txid":txid,"vout":p2wpkh_pos}], {self.get_address(confidential, 1):9.99})

@@ -1308,7 +1308,8 @@ UniValue blindpsbt(const JSONRPCRequest& request)
     if (request.fHelp || request.params.size() < 1 || request.params.size() > 2)
         throw std::runtime_error(
             "blindpsbt \"psbt\" ( ignoreblindfail )\n"
-            "\nUse the blinding data from the PSBT inputs to generate the blinding data for the PSBT outputs.\n"
+            "\nUse the blinding data from the PSBT inputs to generate the blinding data for the PSBT outputs.\n\n"
+            "TODO: Not expected to work on issuance/reissuance/peg transactions yet.\n"
 
             "\nArguments:\n"
             "1. \"psbt\"            (string, required) The PSBT base64 string\n"
@@ -2017,13 +2018,19 @@ UniValue converttopsbt(const JSONRPCRequest& request)
 
     // Make a blank psbt
     PartiallySignedTransaction psbtx;
-    psbtx.tx = tx;
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         psbtx.inputs.push_back(PSBTInput());
     }
     for (unsigned int i = 0; i < tx.vout.size(); ++i) {
         psbtx.outputs.push_back(PSBTOutput());
+        // At this point, if the nonce field is present it should be a smuggled
+        //   pubkey, and not a real nonce. Convert it back to a pubkey and strip
+        //   it out.
+        psbtx.outputs[i].blinding_pubkey = CPubKey(tx.vout[i].nNonce.vchCommitment);
+        tx.vout[i].nNonce.SetNull();
     }
+
+    psbtx.tx = tx;
 
     // Serialize the PSBT
     CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);

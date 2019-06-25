@@ -53,10 +53,12 @@ TransactionError FillPSBTInputsData(const CWallet* pwallet, PartiallySignedTrans
 TransactionError SignPSBT(const CWallet* pwallet, PartiallySignedTransaction& psbtx, bool& complete, int sighash_type, bool sign, bool imbalance_ok)
 {
     complete = false;
-    // Check that the transaction is not still in need of blinding
-    for (const PSBTOutput& o : psbtx.outputs) {
-        if (o.blinding_pubkey.IsValid()) {
-            return TransactionError::BLINDING_REQUIRED;
+    // If we're signing, check that the transaction is not still in need of blinding
+    if (sign) {
+        for (const PSBTOutput& o : psbtx.outputs) {
+            if (o.blinding_pubkey.IsValid()) {
+                return TransactionError::BLINDING_REQUIRED;
+            }
         }
     }
 

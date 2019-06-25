@@ -4662,11 +4662,23 @@ UniValue walletcreatefundedpsbt(const JSONRPCRequest& request)
 
     CAmount fee;
     int change_position;
-    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3]["replaceable"], NullUniValue /* CA: assets_in */);
+    std::vector<CPubKey> output_pubkeys;
+
+    // Because we use the &output_pubkeys form of ConstructTransaction, it will
+    //   not use the nonce hack of putting output pubkeys in the nonce fields
+    //   of the outputs.
+    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3]["replaceable"], NullUniValue /* CA: assets_in */, &output_pubkeys);
+
+    // Because our transaction outputs do not have pubkeys in the nonce fields,
+    //   FundTransaction will not see them as blinded, so no blinding will
+    //   occur here. (This is what we want, for PSBT usage; we will blind later.)
     FundTransaction(pwallet, rawTx, fee, change_position, request.params[3]);
 
     // Make a blank psbt
     PartiallySignedTransaction psbtx(rawTx);
+    for (unsigned int i = 0; i < rawTx.vout.size(); ++i) {
+        psbtx.outputs[i].blinding_pubkey = output_pubkeys[i];
+    }
 
     // Fill transaction with out data but don't sign
     bool bip32derivs = request.params[4].isNull() ? false : request.params[4].get_bool();
