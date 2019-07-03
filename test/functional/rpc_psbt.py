@@ -79,12 +79,6 @@ class PSBTTest(BitcoinTestFramework):
     def to_unconf_addr(self, node_num, addr):
         return self.nodes[node_num].getaddressinfo(addr)['unconfidential']
 
-    def find_output_in_tx(self, tx, amount):
-        for i in range(len(tx["vout"])):
-            if tx["vout"][i]["value"] == amount:
-                return i
-        raise RuntimeError("find_output tx %s : %s not found" % (tx, str(amount)))
-
     def run_basic_tests(self, confidential):
         # Create and fund a raw tx for sending 10 BTC
         psbtx1 = self.nodes[0].walletcreatefundedpsbt([], {self.get_address(confidential, 2):10})['psbt']
@@ -120,8 +114,10 @@ class PSBTTest(BitcoinTestFramework):
         # fund those addresses
         rawtx = self.nodes[0].createrawtransaction([], {p2sh:10, p2wsh:10, p2wpkh:10, p2sh_p2wsh:10, p2sh_p2wpkh:10, p2pkh:10})
         rawtx = self.nodes[0].fundrawtransaction(rawtx, {"changePosition":3})
-        signed_tx = self.nodes[0].signrawtransactionwithwallet(rawtx['hex'])['hex']
+        rawtx = self.nodes[0].blindrawtransaction(rawtx['hex'])
+        signed_tx = self.nodes[0].signrawtransactionwithwallet(rawtx)['hex']
         txid = self.nodes[0].sendrawtransaction(signed_tx)
+
         self.nodes[0].generate(6)
         self.sync_all()
 
@@ -197,23 +193,37 @@ class PSBTTest(BitcoinTestFramework):
         # Create outputs to nodes 1 and 2
         # We do a whole song-and-dance here (instead of calling sendtoaddress) to get access to the unblinded transaction data to find our outputs
         node1_addr = self.get_address(confidential, 1)
+        node1_unconf_addr = self.to_unconf_addr(1, node1_addr)
         node2_addr = self.get_address(confidential, 2)
+        node2_unconf_addr = self.to_unconf_addr(2, node2_addr)
         rt1 = self.nodes[0].createrawtransaction([], {node1_addr:13})
         rt1 = self.nodes[0].fundrawtransaction(rt1)
-        rt1 = self.nodes[0].signrawtransactionwithwallet(rt1['hex'])
+        rt1 = self.nodes[0].blindrawtransaction(rt1['hex'])
+        rt1 = self.nodes[0].signrawtransactionwithwallet(rt1)
         txid1 = self.nodes[0].sendrawtransaction(rt1['hex'])
         rt1 = self.nodes[0].decoderawtransaction(rt1['hex'])
 
         rt2 = self.nodes[0].createrawtransaction([], {node2_addr:13})
         rt2 = self.nodes[0].fundrawtransaction(rt2)
-        rt2 = self.nodes[0].signrawtransactionwithwallet(rt2['hex'])
+        rt2 = self.nodes[0].blindrawtransaction(rt2['hex'])
+        rt2 = self.nodes[0].signrawtransactionwithwallet(rt2)
         txid2 = self.nodes[0].sendrawtransaction(rt2['hex'])
         rt2 = self.nodes[0].decoderawtransaction(rt2['hex'])
 
         self.nodes[0].generate(6)
         self.sync_all()
-        vout1 = self.find_output_in_tx(rt1, 13)
-        vout2 = self.find_output_in_tx(rt2, 13)
+
+        for out in rt1['vout']:
+            if out['scriptPubKey']['type'] == "fee":
+                next
+            elif out['scriptPubKey']['addresses'][0] == node1_unconf_addr:
+                vout1 = out['n']
+
+        for out in rt2['vout']:
+            if out['scriptPubKey']['type'] == "fee":
+                next
+            elif out['scriptPubKey']['addresses'][0] == node2_unconf_addr:
+                vout2 = out['n']
 
         # This test doesn't work with Confidential Assets yet.
         if not confidential:
@@ -271,11 +281,13 @@ class PSBTTest(BitcoinTestFramework):
 
         # Regression test for 14473 (mishandling of already-signed witness transaction):
         psbtx_info = self.nodes[0].walletcreatefundedpsbt([{"txid":unspent["txid"], "vout":unspent["vout"]}], [{self.nodes[2].getnewaddress():unspent["amount"]+1}])
-        complete_psbt = self.nodes[0].walletprocesspsbt(psbtx_info["psbt"])
-        double_processed_psbt = self.nodes[0].walletprocesspsbt(complete_psbt["psbt"])
-        assert_equal(complete_psbt, double_processed_psbt)
+        filled = self.nodes[0].walletfillpsbtdata(psbtx_info["psbt"])
+        blinded = self.nodes[0].blindpsbt(filled["psbt"])
+        signed = self.nodes[0].walletsignpsbt(blinded)
+        signed_again = self.nodes[0].walletsignpsbt(signed["psbt"])
+        assert_equal(signed, signed_again)
         # We don't care about the decode result, but decoding must succeed.
-        self.nodes[0].decodepsbt(double_processed_psbt["psbt"])
+        self.nodes[0].decodepsbt(signed["psbt"])
 
     def run_bip174_tests(self):
         # BIP 174 Test Vectors
@@ -349,7 +361,8 @@ class PSBTTest(BitcoinTestFramework):
         unconf_addr_4 = self.get_address(False, 0)
         rawtx = self.nodes[0].createrawtransaction([], {unconf_addr_0:50, unconf_addr_1:50, unconf_addr_4:50})
         rawtx = self.nodes[0].fundrawtransaction(rawtx, {"changePosition":3})  # our outputs will be 0, 1, 2
-        signed_tx = self.nodes[0].signrawtransactionwithwallet(rawtx['hex'])['hex']
+        rawtx = self.nodes[0].blindrawtransaction(rawtx['hex'])
+        signed_tx = self.nodes[0].signrawtransactionwithwallet(rawtx)['hex']
         txid_nonconf = self.nodes[0].sendrawtransaction(signed_tx)
         self.nodes[0].generate(1)
         self.sync_all()

@@ -1194,6 +1194,16 @@ UniValue sendrawtransaction(const JSONRPCRequest& request)
         throw JSONRPCTransactionError(err, err_string);
     }
 
+    for (const auto& out : tx->vout) {
+        // If we have a nonce, it could be a smuggled pubkey, or it could be a
+        //   proper nonce produced by blinding. In the latter case, the value
+        //   will always be blinded and not explicit. In the former case, we
+        //   error out because the transaction is not blinded properly.
+        if (!out.nNonce.IsNull() && out.nValue.IsExplicit()) {
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Transaction output has nonce, but is not blinded. Did you forget to call blindpsbt, blindrawtranssaction, or rawblindrawtransaction?");
+        }
+    }
+
     return txid.GetHex();
 }
 
@@ -1309,7 +1319,7 @@ UniValue blindpsbt(const JSONRPCRequest& request)
         throw std::runtime_error(
             "blindpsbt \"psbt\" ( ignoreblindfail )\n"
             "\nUse the blinding data from the PSBT inputs to generate the blinding data for the PSBT outputs.\n\n"
-            "TODO: Not expected to work on issuance/reissuance/peg transactions yet.\n"
+            "NOTE: Does not work on issuance/reissuance/peg transactions yet.\n"
 
             "\nArguments:\n"
             "1. \"psbt\"            (string, required) The PSBT base64 string\n"
