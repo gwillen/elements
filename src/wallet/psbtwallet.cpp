@@ -144,7 +144,7 @@ void FillPSBTOutputsData(const CWallet* pwallet, PartiallySignedTransaction& psb
     const CMutableTransaction& tx = *psbtx.tx;
 
     // Fill in the bip32 keypaths and redeemscripts for the outputs so that hardware wallets can identify change
-    for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
+    for (unsigned int i = 0; i < tx.vout.size(); ++i) {
         const CTxOut& out = tx.vout.at(i);
         PSBTOutput& psbt_out = psbtx.outputs.at(i);
 

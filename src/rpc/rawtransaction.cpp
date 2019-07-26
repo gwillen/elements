@@ -1184,16 +1184,6 @@ UniValue sendrawtransaction(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
     CTransactionRef tx(MakeTransactionRef(std::move(mtx)));
 
-    bool allowhighfees = false;
-    if (!request.params[1].isNull()) allowhighfees = request.params[1].get_bool();
-    const CAmount highfee{allowhighfees ? 0 : ::maxTxFee};
-    uint256 txid;
-    std::string err_string;
-    const TransactionError err = BroadcastTransaction(tx, txid, err_string, highfee);
-    if (TransactionError::OK != err) {
-        throw JSONRPCTransactionError(err, err_string);
-    }
-
     for (const auto& out : tx->vout) {
         // If we have a nonce, it could be a smuggled pubkey, or it could be a
         //   proper nonce produced by blinding. In the latter case, the value
@@ -1202,6 +1192,16 @@ UniValue sendrawtransaction(const JSONRPCRequest& request)
         if (!out.nNonce.IsNull() && out.nValue.IsExplicit()) {
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Transaction output has nonce, but is not blinded. Did you forget to call blindpsbt, blindrawtranssaction, or rawblindrawtransaction?");
         }
+    }
+
+    bool allowhighfees = false;
+    if (!request.params[1].isNull()) allowhighfees = request.params[1].get_bool();
+    const CAmount highfee{allowhighfees ? 0 : ::maxTxFee};
+    uint256 txid;
+    std::string err_string;
+    const TransactionError err = BroadcastTransaction(tx, txid, err_string, highfee);
+    if (TransactionError::OK != err) {
+        throw JSONRPCTransactionError(err, err_string);
     }
 
     return txid.GetHex();
